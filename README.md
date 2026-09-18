@@ -15,27 +15,30 @@ bun add @corbits/agent-token
 
 ## Mount (`mountAgentTokens`)
 
-Routes are registered directly on the host's app, never a sub-router under
-a prefix. The host supplies `requireGrant`: this package never reimplements
-Interchange's grant checks.
+Routes are relative and go under the host's own tenant prefix, so the acting
+tenant comes from the host's authenticated context and never from a path
+parameter. The host supplies its own grant middleware: minting a token is
+minting a credential, so it is gated the way the host gates credential
+creation — once, its way.
 
 ```ts
 const tokenApp = new Hono<TenantEnv>();
 mountAgentTokens(tokenApp, {
   db,
-  requireGrant: (ctx, tenantId) => {
-    const c = ctx as { get(key: "tenant"): { id: string } };
-    return c.get("tenant").id === tenantId;
-  },
+  requireGrant: requireGrant("credential:*", "create"),
+  resolveTenantId: (ctx) => (ctx as { get(k: "tenant"): { id: string } }).get("tenant").id,
+  // A token is scoped to a definition, so the host confirms this tenant
+  // owns it; an unknown definition answers 404 with no detail.
+  resolveDefinition: (tenantId, definitionId) => hub.tenantOwnsDefinition(tenantId, definitionId),
 });
-app.route("/", tokenApp);
+app.route("/api/tenants/:tenantId", tokenApp);
 ```
 
 | Route | |
 |---|---|
-| `GET /api/tenants/:tenantId/agent-tokens` | List the tenant's tokens (never the plaintext or its digest) |
-| `POST /api/tenants/:tenantId/agent-tokens` | Mint a token (`definitionId`, `name`); the plaintext is in the 201 response and nowhere else |
-| `DELETE /api/tenants/:tenantId/agent-tokens/:id` | Revoke a token; revocation is final |
+| `GET /agent-tokens` | List the tenant's tokens (never the plaintext or its digest) |
+| `POST /agent-tokens` | Mint a token (`definitionId`, `name`); the plaintext is in the 201 response and nowhere else |
+| `DELETE /agent-tokens/:id` | Revoke a token; revocation is final |
 
 ## Middleware (`requireAgentToken`)
 
@@ -69,7 +72,10 @@ presented.
 - Only `sha256(token)` is stored; lookups are by digest, and the digest
   comparison is constant-time.
 - Scope — the tenant and the definition — travels with the row, not with
-  the caller's claim.
+  the caller's claim. The tenant is read off the host's context and the
+  definition is confirmed to belong to it before a token is minted.
+- Every route runs the host's grant middleware, so authority is checked
+  once and by the host.
 - Revoke sets `revoked_at`; a revoked row never verifies again and cannot
   be un-revoked.
 

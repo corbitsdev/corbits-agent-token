@@ -28,6 +28,35 @@ function dbTargetFromUrl(url: string) {
   };
 }
 
+/** Every route runs the host's own middleware; these stand in for it. */
+function mountedApp(
+  db: ReturnType<typeof createDB>["db"],
+  tenantId: string,
+  options: { gate?: "allow" | "deny"; owns?: readonly string[] } = {},
+) {
+  const app = new Hono();
+  const owns = options.owns ?? ["def_artifacts"];
+  mountAgentTokens(app, {
+    db,
+    requireGrant: async (c, next) => {
+      if (options.gate === "deny") return c.json({ error: "forbidden" }, 403);
+      await next();
+      return undefined;
+    },
+    resolveTenantId: () => tenantId,
+    resolveDefinition: (_tenantId, definitionId) => owns.includes(definitionId),
+  });
+  return app;
+}
+
+function mintRequest(definitionId: string): RequestInit {
+  return {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ definitionId, name: "artifacts" }),
+  };
+}
+
 describeIfDb("agent tokens", () => {
   const target = dbTargetFromUrl(databaseUrl ?? "postgres://localhost:5432/unused");
 
@@ -85,30 +114,43 @@ describeIfDb("agent tokens", () => {
       const tenantId = `tnt_mount_${randomUUID().slice(0, 8)}`;
       await seedTenant(db, tenantId);
 
-      const app = new Hono();
-      mountAgentTokens(app, { db, requireGrant: () => true });
+      const app = mountedApp(db, tenantId);
 
-      const created = await app.request(`/api/tenants/${tenantId}/agent-tokens`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ definitionId: "def_artifacts", name: "artifacts" }),
-      });
+      const created = await app.request("/agent-tokens", mintRequest("def_artifacts"));
       expect(created.status).toBe(201);
       const body = (await created.json()) as { token: { id: string; token: string } };
       const plaintext = body.token.token;
 
-      const listed = await app.request(`/api/tenants/${tenantId}/agent-tokens`);
+      const listed = await app.request("/agent-tokens");
       const listedBody = (await listed.json()) as { tokens: Array<Record<string, unknown>> };
       expect(listedBody.tokens).toHaveLength(1);
       expect(JSON.stringify(listedBody)).not.toContain(plaintext);
       expect(JSON.stringify(listedBody)).not.toContain(hashAgentToken(plaintext));
 
-      const revoked = await app.request(
-        `/api/tenants/${tenantId}/agent-tokens/${body.token.id}`,
-        { method: "DELETE" },
-      );
+      const revoked = await app.request(`/agent-tokens/${body.token.id}`, { method: "DELETE" });
       expect(revoked.status).toBe(200);
       expect(await verifyAgentToken(db, plaintext)).toBeUndefined();
+    } finally {
+      await close();
+    }
+  });
+
+  test("the host's gate and the definition check both fail closed", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_gate_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+
+      const gated = mountedApp(db, tenantId, { gate: "deny" });
+      expect((await gated.request("/agent-tokens", mintRequest("def_artifacts"))).status).toBe(403);
+      expect((await gated.request("/agent-tokens")).status).toBe(403);
+
+      const app = mountedApp(db, tenantId);
+      const foreign = await app.request("/agent-tokens", mintRequest("def_somebody_else"));
+      expect(foreign.status).toBe(404);
+      // No detail: a definition another tenant owns reads exactly like one
+      // that never existed.
+      expect(await foreign.json()).toEqual({ error: "not_found" });
     } finally {
       await close();
     }

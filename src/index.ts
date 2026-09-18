@@ -18,7 +18,8 @@ export {
 export {
   mountAgentTokens,
   type MountAgentTokensOpts,
-  type RequireGrant,
+  type ResolveDefinition,
+  type ResolveTenantId,
 } from "./mount";
 export {
   createAgentTokenVerifier,
