@@ -13,14 +13,14 @@
     "url": "https://github.com/corbitsdev/corbits-agent-token/issues"
   },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "intx-src": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./migrations": {
-      "intx-src": "./src/migrations.ts",
       "types": "./dist/migrations.d.ts",
       "default": "./dist/migrations.js"
     }
