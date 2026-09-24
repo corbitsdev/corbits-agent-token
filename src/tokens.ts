@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { and, eq, isNull } from "drizzle-orm";
 
-import { agentTokenTable } from "./schema";
+import { agentTokenTable } from "./schema.js";
 
 export type AgentTokenDb<TSchema extends Record<string, unknown> = Record<string, unknown>> =
   PostgresJsDatabase<TSchema>;

@@ -2,7 +2,7 @@ export {
   agentTokenSchema,
   agentTokenTable,
   applyAgentTokenMigrations,
-} from "./schema";
+} from "./schema.js";
 export {
   agentTokenHashEquals,
   bearerFromAuthorization,
@@ -14,13 +14,13 @@ export {
   type AgentTokenDb,
   type AgentTokenIdentity,
   type MintedAgentToken,
-} from "./tokens";
+} from "./tokens.js";
 export {
   mountAgentTokens,
   type MountAgentTokensOpts,
   type ResolveDefinition,
   type ResolveTenantId,
-} from "./mount";
+} from "./mount.js";
 export {
   createAgentTokenVerifier,
   requireAgentToken,
@@ -28,4 +28,4 @@ export {
   type AgentTokenVariables,
   type AgentTokenVerifier,
   type RequireAgentTokenOpts,
-} from "./middleware";
+} from "./middleware.js";

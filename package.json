@@ -14,15 +14,28 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./migrations": "./src/migrations.ts"
+    ".": {
+      "intx-src": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./migrations": {
+      "intx-src": "./src/migrations.ts",
+      "types": "./dist/migrations.d.ts",
+      "default": "./dist/migrations.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
     "typecheck": "tsc --noEmit",
     "test": "bun test ./src"
   },

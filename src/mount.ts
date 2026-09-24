@@ -5,8 +5,8 @@ import { type } from "arktype";
 import { desc, eq } from "drizzle-orm";
 import type { Env, Hono, MiddlewareHandler } from "hono";
 
-import { agentTokenTable } from "./schema";
-import { mintAgentToken, revokeAgentToken, type AgentTokenDb } from "./tokens";
+import { agentTokenTable } from "./schema.js";
+import { mintAgentToken, revokeAgentToken, type AgentTokenDb } from "./tokens.js";
 
 /** Reads the acting tenant off the host's context. The host owns how its
  * tenant is resolved; this package never reimplements that. */
