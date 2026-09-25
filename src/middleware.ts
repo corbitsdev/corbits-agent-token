@@ -2,7 +2,7 @@
 // context. Anything it cannot resolve to an unrevoked row is a 401.
 import type { Context, MiddlewareHandler } from "hono";
 
-import { bearerFromAuthorization, verifyAgentToken, type AgentTokenDb } from "./tokens";
+import { bearerFromAuthorization, verifyAgentToken, type AgentTokenDb } from "./tokens.js";
 
 export type AgentTokenContext = {
   tenantId: string;

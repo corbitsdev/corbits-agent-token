@@ -1,1 +1,1 @@
-export { applyAgentTokenMigrations } from "./schema";
+export { applyAgentTokenMigrations } from "./schema.js";

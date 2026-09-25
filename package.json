@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Bearer tokens that let a deployed agent definition call back into its Interchange hub: a mint/revoke mount plus a verifying middleware",
   "license": "LGPL-2.1-only",
-  "author": "Corbits",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "homepage": "https://github.com/corbitsdev/corbits-agent-token#readme",
   "repository": {
     "type": "git",
@@ -13,16 +13,29 @@
     "url": "https://github.com/corbitsdev/corbits-agent-token/issues"
   },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./migrations": "./src/migrations.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "default": "./dist/migrations.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
     "typecheck": "tsc --noEmit",
     "test": "bun test ./src"
   },
