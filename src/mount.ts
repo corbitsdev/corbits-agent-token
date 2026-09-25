@@ -21,8 +21,8 @@ export type MountAgentTokensOpts<E extends TenantEnv, TSchema extends Record<str
   db: AgentTokenDb<TSchema>;
   /**
    * The host's own authority check, run as middleware on every route. Minting
-   * a token is minting a credential, so it is gated the way the host gates
-   * credential creation — once, its way, not by a boolean this package
+   * a token is minting a credential, so the host gates it exactly as it gates
+   * credential creation, rather than through a boolean this package
    * interprets.
    */
   requireGrant: MiddlewareHandler<E>;
