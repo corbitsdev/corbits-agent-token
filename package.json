@@ -1,7 +1,7 @@
 {
   "name": "@corbits/agent-token",
-  "version": "0.1.0",
-  "description": "Bearer tokens that let a deployed agent definition call back into its Interchange hub: a mint/revoke mount plus a verifying middleware",
+  "version": "0.2.0",
+  "description": "Bearer tokens that a deployed agent presents when it calls back into its Interchange hub: mint/revoke routes and a verifying Hono middleware",
   "license": "LGPL-2.1-only",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "homepage": "https://github.com/corbitsdev/corbits-agent-token#readme",
