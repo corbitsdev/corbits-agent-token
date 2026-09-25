@@ -29,3 +29,8 @@ export {
   type AgentTokenVerifier,
   type RequireAgentTokenOpts,
 } from "./middleware.js";
+export type {
+  AgentTokenAuth,
+  ResolvedWorkflowRunScope,
+  WorkflowRunScopeEnv,
+} from "./workflow-run-scope.js";
