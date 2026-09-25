@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createDB, dropSchema, runMigrations, schema } from "@intx/db";
 import type { TenantEnv } from "@intx/hub-api";
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 
 import { applyAgentTokenMigrations } from "./schema";
 import { hashAgentToken, mintAgentToken, revokeAgentToken, verifyAgentToken } from "./tokens";
@@ -31,6 +31,20 @@ function dbTargetFromUrl(url: string) {
   };
 }
 
+/** Stands in for the hub's tenant middleware. */
+function tenantFrom<E extends TenantEnv>(
+  db: ReturnType<typeof createDB>["db"],
+  tenantId: string,
+): MiddlewareHandler<E> {
+  return async (c, next) => {
+    const [tenant] = await db.select().from(schema.tenant).where(eq(schema.tenant.id, tenantId));
+    if (tenant === undefined) return c.json({ error: "not_found" }, 404);
+    c.set("tenant", tenant);
+    await next();
+    return undefined;
+  };
+}
+
 /** Every route runs the host's own middleware; these stand in for it. */
 function mountedApp(
   db: ReturnType<typeof createDB>["db"],
@@ -38,6 +52,7 @@ function mountedApp(
   options: { gate?: "allow" | "deny"; owns?: readonly string[] } = {},
 ) {
   const app = new Hono<TenantEnv>();
+  app.use(tenantFrom(db, tenantId));
   const owns = options.owns ?? ["def_artifacts"];
   mountAgentTokens(app, {
     db,
@@ -46,7 +61,6 @@ function mountedApp(
       await next();
       return undefined;
     },
-    resolveTenantId: () => tenantId,
     resolveDefinition: (_tenantId, definitionId) => owns.includes(definitionId),
   });
   return app;
@@ -222,11 +236,17 @@ describeIfDb("agent tokens", () => {
         name: "artifacts",
       });
 
+      const otherTenantId = `tnt_ver_other_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, otherTenantId);
+
       const verify = createAgentTokenVerifier({ db });
       const app = new Hono<WorkflowRunScopeEnv>();
-      app.get("/verify", async (c) => c.json({ identity: (await verify(c)) ?? null }));
-      const identityFor = async (authorization?: string) => {
-        const res = await app.request("/verify", {
+      app.use("/:tenantId/*", async (c, next) =>
+        tenantFrom<WorkflowRunScopeEnv>(db, c.req.param("tenantId"))(c, next),
+      );
+      app.get("/:tenantId/verify", async (c) => c.json({ identity: (await verify(c)) ?? null }));
+      const identityFor = async (authorization?: string, onTenant = tenantId) => {
+        const res = await app.request(`/${onTenant}/verify`, {
           headers: authorization === undefined ? {} : { authorization },
         });
         return ((await res.json()) as { identity: unknown }).identity;
@@ -237,6 +257,7 @@ describeIfDb("agent tokens", () => {
         tenantId,
         definitionId: "def_artifacts",
       });
+      expect(await identityFor(`Bearer ${minted.token}`, otherTenantId)).toBeNull();
       expect(await identityFor()).toBeNull();
       expect(await identityFor("Bearer nope")).toBeNull();
       await revokeAgentToken(db, { tenantId, id: minted.id });
