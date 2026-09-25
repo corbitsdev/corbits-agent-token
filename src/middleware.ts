@@ -1,5 +1,6 @@
 // Hono middleware that turns a presented bearer into an `agentToken` on the
-// context. Anything it cannot resolve to an unrevoked row is a 401.
+// context. Anything it cannot resolve to an unrevoked row minted by the
+// route's own tenant is a 401.
 import type { TenantEnv } from "@intx/hub-api";
 import type { Context, MiddlewareHandler } from "hono";
 
@@ -44,10 +45,14 @@ export function createAgentTokenVerifier<TSchema extends Record<string, unknown>
 
 export function requireAgentToken<TSchema extends Record<string, unknown>>(
   opts: RequireAgentTokenOpts<TSchema>,
-): MiddlewareHandler<{ Variables: AgentTokenVariables }> {
+): MiddlewareHandler<TenantEnv & { Variables: AgentTokenVariables }> {
   return async (c, next) => {
+    // Read first so a host missing the tenant middleware fails every request.
+    const tenantId = c.get("tenant").id;
     const identity = await verifyAuthorization(opts.db, c.req.header("authorization"));
-    if (identity === undefined) return c.json({ error: "unauthorized" }, 401);
+    if (identity === undefined || identity.tenantId !== tenantId) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
     c.set("agentToken", identity);
     await next();
     return undefined;

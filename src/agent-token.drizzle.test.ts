@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { createDB, dropSchema, runMigrations, schema } from "@intx/db";
 import type { TenantEnv } from "@intx/hub-api";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 
 import { applyAgentTokenMigrations } from "./schema";
@@ -158,11 +159,13 @@ describeIfDb("agent tokens", () => {
     }
   });
 
-  test("the middleware admits a live bearer and 401s everything else", async () => {
+  test("the middleware admits a live bearer on its own tenant and 401s everything else", async () => {
     const { db, close } = createDB({ ...target, schema: SCHEMA });
     try {
       const tenantId = `tnt_mw_${randomUUID().slice(0, 8)}`;
+      const otherTenantId = `tnt_mw_other_${randomUUID().slice(0, 8)}`;
       await seedTenant(db, tenantId);
+      await seedTenant(db, otherTenantId);
       const minted = await mintAgentToken(db, {
         tenantId,
         definitionId: "def_artifacts",
@@ -170,19 +173,39 @@ describeIfDb("agent tokens", () => {
       });
 
       const app = new Hono<TenantEnv>();
-      app.get("/guarded", requireAgentToken({ db }), (c) =>
+      app.use("/tenants/:tenantId/*", async (c, next) => {
+        const [tenant] = await db
+          .select()
+          .from(schema.tenant)
+          .where(eq(schema.tenant.id, c.req.param("tenantId")));
+        if (tenant === undefined) return c.json({ error: "not_found" }, 404);
+        c.set("tenant", tenant);
+        await next();
+        return undefined;
+      });
+      app.get("/tenants/:tenantId/guarded", requireAgentToken({ db }), (c) =>
         c.json({ tenantId: c.get("agentToken").tenantId }),
       );
+      app.get("/untenanted", requireAgentToken({ db }), (c) => c.json({ ok: true }));
+      const bearer = { headers: { authorization: `Bearer ${minted.token}` } };
 
-      const ok = await app.request("/guarded", {
-        headers: { authorization: `Bearer ${minted.token}` },
-      });
+      const ok = await app.request(`/tenants/${tenantId}/guarded`, bearer);
       expect(ok.status).toBe(200);
       expect(await ok.json()).toEqual({ tenantId });
 
-      expect((await app.request("/guarded")).status).toBe(401);
+      const crossTenant = await app.request(`/tenants/${otherTenantId}/guarded`, bearer);
+      expect(crossTenant.status).toBe(401);
+
+      // Mounted without the tenant middleware, a valid token never passes.
+      expect((await app.request("/untenanted", bearer)).status).toBe(500);
+
+      expect((await app.request(`/tenants/${tenantId}/guarded`)).status).toBe(401);
       expect(
-        (await app.request("/guarded", { headers: { authorization: "Bearer nope" } })).status,
+        (
+          await app.request(`/tenants/${tenantId}/guarded`, {
+            headers: { authorization: "Bearer nope" },
+          })
+        ).status,
       ).toBe(401);
     } finally {
       await close();
