@@ -16,6 +16,8 @@ export const agentTokenTable = agentTokenSchema.table("token", {
   name: text("name").notNull(),
   // Only the digest is stored; the plaintext is returned once at mint time.
   tokenHash: text("token_hash").notNull().unique(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });

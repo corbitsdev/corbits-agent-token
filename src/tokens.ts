@@ -1,11 +1,17 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { agentTokenTable } from "./schema.js";
 
-export type AgentTokenDb<TSchema extends Record<string, unknown> = Record<string, unknown>> =
-  PostgresJsDatabase<TSchema>;
+export type AgentTokenDb<
+  TSchema extends Record<string, unknown> = Record<string, unknown>,
+> = PostgresJsDatabase<TSchema>;
 
 /** What a verified bearer proves: which tenant minted it, and for which
  * agent definition. */
@@ -76,7 +82,12 @@ export async function verifyAgentToken<TSchema extends Record<string, unknown>>(
   const [row] = await db
     .select()
     .from(agentTokenTable)
-    .where(and(eq(agentTokenTable.tokenHash, presented), isNull(agentTokenTable.revokedAt)))
+    .where(
+      and(
+        eq(agentTokenTable.tokenHash, presented),
+        isNull(agentTokenTable.revokedAt),
+      ),
+    )
     .limit(1);
   if (row === undefined) return undefined;
   if (!agentTokenHashEquals(row.tokenHash, presented)) return undefined;
@@ -102,7 +113,9 @@ export async function revokeAgentToken<TSchema extends Record<string, unknown>>(
 }
 
 /** Reads a `Bearer` credential out of an `Authorization` header value. */
-export function bearerFromAuthorization(header: string | undefined): string | undefined {
+export function bearerFromAuthorization(
+  header: string | undefined,
+): string | undefined {
   if (header === undefined) return undefined;
   const match = /^Bearer[ ]+(.+)$/i.exec(header.trim());
   return match?.[1];

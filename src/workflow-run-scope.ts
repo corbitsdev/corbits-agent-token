@@ -12,7 +12,9 @@ export type ResolvedWorkflowRunScope = {
 };
 
 export type WorkflowRunScopeEnv = TenantEnv & {
-  Variables: TenantEnv["Variables"] & { workflowRunScope: ResolvedWorkflowRunScope };
+  Variables: TenantEnv["Variables"] & {
+    workflowRunScope: ResolvedWorkflowRunScope;
+  };
 };
 
 /**
@@ -25,5 +27,8 @@ export type AgentTokenAuth = {
   verify: AgentTokenVerifier;
   resolveRun: (
     runAddress: string,
-  ) => Promise<ResolvedWorkflowRunScope | null> | ResolvedWorkflowRunScope | null;
+  ) =>
+    | Promise<ResolvedWorkflowRunScope | null>
+    | ResolvedWorkflowRunScope
+    | null;
 };
