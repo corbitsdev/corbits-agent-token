@@ -1,10 +1,10 @@
 # @corbits/agent-token
 
-Bearer tokens that let a deployed agent definition call back into the
-Interchange hub that deployed it. A tenant mints a token for one of its
-definitions; the plaintext is returned once and only its sha256 digest is
-stored. A mount that wants to accept an agent as a caller runs the
-middleware and reads the tenant and definition straight off the verified
+Bearer tokens that let agents authenticate inbound calls to your
+Interchange hub. Use it when a deployed agent calls back into the hub that
+deployed it: a tenant mints a token for one of its agent definitions, the
+plaintext is returned once and only its sha256 digest is stored, and a
+guarded route reads the tenant and definition straight off the verified
 token.
 
 ## Install
@@ -21,19 +21,30 @@ The host supplies the Interchange stack as peers: `@intx/db`,
 Routes are relative and go under the host's own tenant prefix, so the acting
 tenant comes from the host's authenticated context and never from a path
 parameter. The host supplies its own grant middleware: minting a token is
-minting a credential, so it is gated the way the host gates credential
-creation — once, its way.
+minting a credential, so the host gates it exactly as it gates credential
+creation.
 
 ```ts
-const tokenApp = new Hono<TenantEnv>();
-mountAgentTokens(tokenApp, {
-  db,
-  requireGrant: requireGrant("credential:*", "create"),
-  // A token is scoped to a definition, so the host confirms this tenant
-  // owns it; an unknown definition answers 404 with no detail.
-  resolveDefinition: (tenantId, definitionId) => hub.tenantOwnsDefinition(tenantId, definitionId),
-});
-app.route("/api/tenants/:tenantId", tokenApp);
+import { mountAgentTokens, type AgentTokenDb } from "@corbits/agent-token";
+import type { RequireGrant, TenantEnv } from "@intx/hub-api";
+import { Hono } from "hono";
+
+export function mountTokens(
+  app: Hono<TenantEnv>,
+  db: AgentTokenDb,
+  requireGrant: RequireGrant,
+  tenantOwnsDefinition: (tenantId: string, definitionId: string) => Promise<boolean>,
+) {
+  const tokenApp = new Hono<TenantEnv>();
+  mountAgentTokens(tokenApp, {
+    db,
+    requireGrant: requireGrant("credential:*", "create"),
+    // A token is scoped to a definition, so the host confirms this tenant
+    // owns it; an unknown definition answers 404 with no detail.
+    resolveDefinition: tenantOwnsDefinition,
+  });
+  app.route("/api/tenants/:tenantId", tokenApp);
+}
 ```
 
 | Route | |
@@ -53,10 +64,16 @@ It must run behind the hub's tenant middleware, which sets `tenant`; mounted
 without it, a valid token fails the request with a 500 rather than passing.
 
 ```ts
-app.get("/api/tenants/:tenantId/artifacts/:id", requireAgentToken({ db }), (c) => {
-  const { definitionId } = c.get("agentToken");
-  ...
-});
+import { requireAgentToken, type AgentTokenDb } from "@corbits/agent-token";
+import type { TenantEnv } from "@intx/hub-api";
+import type { Hono } from "hono";
+
+export function mountArtifacts(app: Hono<TenantEnv>, db: AgentTokenDb) {
+  app.get("/api/tenants/:tenantId/artifacts/:id", requireAgentToken({ db }), (c) => {
+    const { definitionId } = c.get("agentToken");
+    return c.json({ id: c.req.param("id"), definitionId });
+  });
+}
 ```
 
 `createAgentTokenVerifier` is the bearer lookup as a plain function, for a
@@ -87,30 +104,20 @@ the mount refuses a token whose `tenantId` is not the resolved run's.
 - Revoke sets `revoked_at`; a revoked row never verifies again and cannot
   be un-revoked.
 
-## Schema / migrations
+## Migrations
 
-One table, on its own Postgres schema (`agent_token.token`), FK'd back to
-Interchange's `tenant` table:
-
-| Column | |
-|---|---|
-| `id` | primary key |
-| `tenant_id` | FK → `tenant.id`, cascades on delete |
-| `definition_id` | the agent definition this token acts as |
-| `name` | what the minting caller called it |
-| `token_hash` | sha256 of the plaintext, unique |
-| `created_at` | mint time |
-| `revoked_at` | set once, on revoke |
-
-Applied idempotently, inside one advisory-locked transaction so concurrent
-hub replicas cannot race the same DDL:
+The package ships its SQL. Run it after Interchange's own migrations, with
+the same config and schema; it is idempotent and advisory-locked, so
+concurrent hub replicas cannot race it:
 
 ```ts
-import { runMigrations } from "@intx/db";
 import { runAgentTokenMigrations } from "@corbits/agent-token/migrations";
+import { runMigrations, type DBConfig } from "@intx/db";
 
-await runMigrations(dbConfig, { schema: "public" });
-await runAgentTokenMigrations(dbConfig, { schema: "public" });
+export async function migrate(dbConfig: DBConfig) {
+  await runMigrations(dbConfig, { schema: "public" });
+  await runAgentTokenMigrations(dbConfig, { schema: "public" });
+}
 ```
 
 ## License
