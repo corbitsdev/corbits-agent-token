@@ -4,7 +4,11 @@
 import type { TenantEnv } from "@intx/hub-api";
 import type { Context, MiddlewareHandler } from "hono";
 
-import { bearerFromAuthorization, verifyAgentToken, type AgentTokenDb } from "./tokens.js";
+import {
+  bearerFromAuthorization,
+  verifyAgentToken,
+  type AgentTokenDb,
+} from "./tokens.js";
 
 export type AgentTokenContext = {
   tenantId: string;
@@ -35,23 +39,37 @@ async function verifyAuthorization<TSchema extends Record<string, unknown>>(
   const token = bearerFromAuthorization(authorization);
   if (token === undefined) return undefined;
   const identity = await verifyAgentToken(db, token);
-  if (identity === undefined || identity.tenantId !== tenantId) return undefined;
-  return { id: identity.id, tenantId: identity.tenantId, definitionId: identity.definitionId };
+  if (identity === undefined || identity.tenantId !== tenantId)
+    return undefined;
+  return {
+    id: identity.id,
+    tenantId: identity.tenantId,
+    definitionId: identity.definitionId,
+  };
 }
 
-export function createAgentTokenVerifier<TSchema extends Record<string, unknown>>(
-  opts: RequireAgentTokenOpts<TSchema>,
-): AgentTokenVerifier {
+export function createAgentTokenVerifier<
+  TSchema extends Record<string, unknown>,
+>(opts: RequireAgentTokenOpts<TSchema>): AgentTokenVerifier {
   // The tenant is read before the header, so a host missing the tenant
   // middleware fails on every request, not only on valid tokens.
-  return (c) => verifyAuthorization(opts.db, c.get("tenant").id, c.req.header("authorization"));
+  return (c) =>
+    verifyAuthorization(
+      opts.db,
+      c.get("tenant").id,
+      c.req.header("authorization"),
+    );
 }
 
 export function requireAgentToken<TSchema extends Record<string, unknown>>(
   opts: RequireAgentTokenOpts<TSchema>,
 ): MiddlewareHandler<TenantEnv & { Variables: AgentTokenVariables }> {
   return async (c, next) => {
-    const identity = await verifyAuthorization(opts.db, c.get("tenant").id, c.req.header("authorization"));
+    const identity = await verifyAuthorization(
+      opts.db,
+      c.get("tenant").id,
+      c.req.header("authorization"),
+    );
     if (identity === undefined) return c.json({ error: "unauthorized" }, 401);
     c.set("agentToken", identity);
     await next();

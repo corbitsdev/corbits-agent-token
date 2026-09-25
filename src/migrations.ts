@@ -32,9 +32,13 @@ export async function runAgentTokenMigrations(
     throw new Error("runAgentTokenMigrations: schema name must not be empty");
   }
   const schemaIdent = quoteIdentifier(options.schema);
-  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
+  const files = (await readdir(MIGRATIONS_DIR))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
   if (files.length === 0) {
-    throw new Error(`runAgentTokenMigrations: no .sql files found in ${MIGRATIONS_DIR}`);
+    throw new Error(
+      `runAgentTokenMigrations: no .sql files found in ${MIGRATIONS_DIR}`,
+    );
   }
   const statements: string[] = [];
   for (const file of files) {
@@ -58,7 +62,9 @@ export async function runAgentTokenMigrations(
   });
   try {
     await client.begin(async (tx) => {
-      await tx.unsafe(`SELECT pg_advisory_xact_lock(hashtext('corbits_agent_token'))`);
+      await tx.unsafe(
+        `SELECT pg_advisory_xact_lock(hashtext('corbits_agent_token'))`,
+      );
       for (const stmt of statements) await tx.unsafe(stmt);
     });
   } catch (error) {
