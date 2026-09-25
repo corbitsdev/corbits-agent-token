@@ -26,7 +26,6 @@ const tokenApp = new Hono<TenantEnv>();
 mountAgentTokens(tokenApp, {
   db,
   requireGrant: requireGrant("credential:*", "create"),
-  resolveTenantId: (c) => c.get("tenant").id,
   // A token is scoped to a definition, so the host confirms this tenant
   // owns it; an unknown definition answers 404 with no detail.
   resolveDefinition: (tenantId, definitionId) => hub.tenantOwnsDefinition(tenantId, definitionId),
@@ -59,8 +58,8 @@ app.get("/api/tenants/:tenantId/artifacts/:id", requireAgentToken({ db }), (c) =
 
 `createAgentTokenVerifier` is the bearer lookup as a plain function, for a
 hub mount that wants to fall back to its own authentication when no bearer
-is presented. It does not compare tenants: the caller checks the returned
-`tenantId` against whatever it scopes the request to.
+is presented. Like the middleware, it refuses a token minted by another
+tenant.
 
 ## Run-scoped mounts
 

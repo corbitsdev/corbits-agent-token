@@ -9,10 +9,6 @@ import type { Context, Hono, MiddlewareHandler } from "hono";
 import { agentTokenTable } from "./schema.js";
 import { mintAgentToken, revokeAgentToken, type AgentTokenDb } from "./tokens.js";
 
-/** Reads the acting tenant off the host's context. The host owns how its
- * tenant is resolved; this package never reimplements that. */
-export type ResolveTenantId<E extends TenantEnv> = (c: Context<E>) => string;
-
 /** Answers whether `definitionId` names an agent definition this tenant
  * owns. A token is scoped to a definition, so minting one against a
  * definition the tenant does not own would widen it past the tenant. */
@@ -30,7 +26,6 @@ export type MountAgentTokensOpts<E extends TenantEnv, TSchema extends Record<str
    * interprets.
    */
   requireGrant: MiddlewareHandler<E>;
-  resolveTenantId: ResolveTenantId<E>;
   resolveDefinition: ResolveDefinition;
 };
 
@@ -44,7 +39,7 @@ export function mountAgentTokens<E extends TenantEnv, TSchema extends Record<str
   app: Hono<E>,
   opts: MountAgentTokensOpts<E, TSchema>,
 ): Hono<E> {
-  const { db, requireGrant, resolveTenantId, resolveDefinition } = opts;
+  const { db, requireGrant, resolveDefinition } = opts;
 
   app.get("/agent-tokens", requireGrant, async (c: Context<E>) => {
     const rows = await db
@@ -57,13 +52,13 @@ export function mountAgentTokens<E extends TenantEnv, TSchema extends Record<str
         revokedAt: agentTokenTable.revokedAt,
       })
       .from(agentTokenTable)
-      .where(eq(agentTokenTable.tenantId, resolveTenantId(c)))
+      .where(eq(agentTokenTable.tenantId, c.get("tenant").id))
       .orderBy(desc(agentTokenTable.createdAt));
     return c.json({ tokens: rows });
   });
 
   app.post("/agent-tokens", requireGrant, async (c: Context<E>) => {
-    const tenantId = resolveTenantId(c);
+    const tenantId = c.get("tenant").id;
     const parsed = MintBody(await c.req.json().catch(() => undefined));
     if (parsed instanceof type.errors) {
       return c.json({ error: "invalid_body", detail: parsed.summary }, 400);
@@ -83,7 +78,7 @@ export function mountAgentTokens<E extends TenantEnv, TSchema extends Record<str
 
   app.delete("/agent-tokens/:id", requireGrant, async (c: Context<E, "/agent-tokens/:id">) => {
     const revoked = await revokeAgentToken(db, {
-      tenantId: resolveTenantId(c),
+      tenantId: c.get("tenant").id,
       id: c.req.param("id"),
     });
     if (!revoked) return c.json({ error: "not_found" }, 404);
