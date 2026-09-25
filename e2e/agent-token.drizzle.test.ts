@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createDB, dropSchema, runMigrations, schema } from "@intx/db";
 import type { TenantEnv } from "@intx/hub-api";
 import { eq } from "drizzle-orm";
+import { type } from "arktype";
 import { Hono, type MiddlewareHandler } from "hono";
 
 import { runAgentTokenMigrations } from "../src/migrations";
@@ -19,6 +20,10 @@ const databaseUrl = process.env.DATABASE_URL;
 const describeIfDb = databaseUrl === undefined ? describe.skip : describe;
 
 const SCHEMA = "agent_token_test";
+
+const MintResponse = type({ token: { id: "string", token: "string" } });
+const ListResponse = type({ tokens: "unknown[]" });
+const VerifyResponse = type({ identity: "unknown" });
 
 function dbTargetFromUrl(url: string) {
   const parsed = new URL(url);
@@ -135,11 +140,11 @@ describeIfDb("agent tokens", () => {
 
       const created = await app.request("/agent-tokens", mintRequest("def_artifacts"));
       expect(created.status).toBe(201);
-      const body = (await created.json()) as { token: { id: string; token: string } };
+      const body = MintResponse.assert(await created.json());
       const plaintext = body.token.token;
 
       const listed = await app.request("/agent-tokens");
-      const listedBody = (await listed.json()) as { tokens: Array<Record<string, unknown>> };
+      const listedBody = ListResponse.assert(await listed.json());
       expect(listedBody.tokens).toHaveLength(1);
       expect(JSON.stringify(listedBody)).not.toContain(plaintext);
       expect(JSON.stringify(listedBody)).not.toContain(hashAgentToken(plaintext));
@@ -249,7 +254,7 @@ describeIfDb("agent tokens", () => {
         const res = await app.request(`/${onTenant}/verify`, {
           headers: authorization === undefined ? {} : { authorization },
         });
-        return ((await res.json()) as { identity: unknown }).identity;
+        return VerifyResponse.assert(await res.json()).identity;
       };
 
       expect(await identityFor(`Bearer ${minted.token}`)).toEqual({
