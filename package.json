@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Bearer tokens that let a deployed agent definition call back into its Interchange hub: a mint/revoke mount plus a verifying middleware",
   "license": "LGPL-2.1-only",
-  "author": "Corbits",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "homepage": "https://github.com/corbitsdev/corbits-agent-token#readme",
   "repository": {
     "type": "git",
