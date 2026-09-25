@@ -1,13 +1,4 @@
 export {
-  agentTokenSchema,
-  agentTokenTable,
-  applyAgentTokenMigrations,
-} from "./schema.js";
-export {
-  agentTokenHashEquals,
-  bearerFromAuthorization,
-  generateAgentToken,
-  hashAgentToken,
   mintAgentToken,
   revokeAgentToken,
   verifyAgentToken,
