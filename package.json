@@ -38,7 +38,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test ./src"
+    "test:e2e": "bun test ./e2e"
   },
   "dependencies": {
     "arktype": "^2.2.0"
