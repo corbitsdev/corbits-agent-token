@@ -13,6 +13,9 @@ token.
 bun add @corbits/agent-token
 ```
 
+The host supplies the Interchange stack as peers: `@intx/db`,
+`@intx/hub-api`, `drizzle-orm`, `hono` and `postgres`.
+
 ## Mount (`mountAgentTokens`)
 
 Routes are relative and go under the host's own tenant prefix, so the acting

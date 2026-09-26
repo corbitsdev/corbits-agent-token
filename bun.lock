@@ -5,19 +5,23 @@
     "": {
       "name": "@corbits/agent-token",
       "dependencies": {
-        "@intx/db": "^0.4.0",
         "arktype": "^2.2.0",
-        "drizzle-orm": "^0.45.2",
-        "hono": "^4.11.9",
-        "postgres": "^3.4.8",
       },
       "devDependencies": {
+        "@intx/db": "0.4.0",
         "@intx/hub-api": "0.4.0",
         "@types/bun": "1.3.9",
+        "drizzle-orm": "0.45.2",
+        "hono": "4.13.8",
+        "postgres": "3.4.9",
         "typescript": "5.9.3",
       },
       "peerDependencies": {
+        "@intx/db": "^0.4.0",
         "@intx/hub-api": "^0.4.0",
+        "drizzle-orm": "^0.45.2",
+        "hono": "^4.11.9",
+        "postgres": "^3.4.8",
       },
     },
   },
