@@ -106,9 +106,11 @@ Applied idempotently, inside one advisory-locked transaction so concurrent
 hub replicas cannot race the same DDL:
 
 ```ts
-import { applyAgentTokenMigrations } from "@corbits/agent-token/migrations";
+import { runMigrations } from "@intx/db";
+import { runAgentTokenMigrations } from "@corbits/agent-token/migrations";
 
-await applyAgentTokenMigrations(databaseUrl);
+await runMigrations(dbConfig, { schema: "public" });
+await runAgentTokenMigrations(dbConfig, { schema: "public" });
 ```
 
 ## License
