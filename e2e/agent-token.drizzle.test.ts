@@ -9,11 +9,11 @@ import type { TenantEnv } from "@intx/hub-api";
 import { eq } from "drizzle-orm";
 import { Hono, type MiddlewareHandler } from "hono";
 
-import { runAgentTokenMigrations } from "./migrations";
-import { hashAgentToken, mintAgentToken, revokeAgentToken, verifyAgentToken } from "./tokens";
-import { mountAgentTokens } from "./mount";
-import { createAgentTokenVerifier, requireAgentToken } from "./middleware";
-import type { WorkflowRunScopeEnv } from "./workflow-run-scope";
+import { runAgentTokenMigrations } from "../src/migrations";
+import { hashAgentToken, mintAgentToken, revokeAgentToken, verifyAgentToken } from "../src/tokens";
+import { mountAgentTokens } from "../src/mount";
+import { createAgentTokenVerifier, requireAgentToken } from "../src/middleware";
+import type { WorkflowRunScopeEnv } from "../src/workflow-run-scope";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeIfDb = databaseUrl === undefined ? describe.skip : describe;
@@ -260,6 +260,13 @@ describeIfDb("agent tokens", () => {
       expect(await identityFor(`Bearer ${minted.token}`, otherTenantId)).toBeNull();
       expect(await identityFor()).toBeNull();
       expect(await identityFor("Bearer nope")).toBeNull();
+      expect(await identityFor(`  bearer   ${minted.token}  `)).toEqual({
+        id: minted.id,
+        tenantId,
+        definitionId: "def_artifacts",
+      });
+      expect(await identityFor(`Basic ${minted.token}`)).toBeNull();
+      expect(await identityFor("Bearer")).toBeNull();
       await revokeAgentToken(db, { tenantId, id: minted.id });
       expect(await identityFor(`Bearer ${minted.token}`)).toBeNull();
     } finally {
