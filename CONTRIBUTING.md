@@ -3,21 +3,15 @@
 ## Development
 
 ```sh
-git clone https://github.com/corbitsdev/corbits-agent-token.git
-cd corbits-agent-token
 bun install
-createdb agent_token_dev
-export DATABASE_URL=postgres://localhost:5432/agent_token_dev
-
-bun run check   # oxlint, oxfmt --check, typecheck, tests (what CI runs)
-bun run format  # oxfmt
-bun run build
+bun run check
 ```
 
-The suites in `e2e/` run against a real Postgres and skip when `DATABASE_URL` is unset. CI sets it.
+`bun run check` runs typecheck, lint, format check and unit tests. `bun run format` rewrites the tree.
 
-- `e2e/agent-token.drizzle.test.ts` runs Interchange's migrations into a scratch schema and exercises the routes, the middleware and the verifier.
-- `e2e/upgrade-from-0.1.0.test.ts` creates its own database, builds it with the published 0.1.0 (the `agent-token-0.1.0` dev dependency), then upgrades it with this build.
+Contributors sign the [CLA](CLA.md) on their first PR; the CLA bot explains how.
+
+`bun run test:e2e` needs Postgres in `DATABASE_URL`, e.g. `DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres bun run test:e2e`; the suites skip when it is unset. `e2e/agent-token.drizzle.test.ts` exercises the routes, middleware and verifier on a scratch schema. `e2e/upgrade-from-0.1.0.test.ts` builds its own database with the published 0.1.0 (the `agent-token-0.1.0` dev dependency), then upgrades it with this build.
 
 ## Migrations
 
@@ -29,3 +23,16 @@ Commit subjects and PR titles follow [Conventional Commits](https://www.conventi
 Add `!` only for public API breaks: removed or renamed exports, changed signatures, newly required params. Peer and dependency range changes are `build(deps):` with no `!`.
 Keep subjects imperative, lowercase after the colon, 72 characters or less, and free of ticket IDs.
 Every PR links its issue with a `Closes <issue id>` line in the PR body.
+
+## Releasing
+
+Releases are manual. On a clean, up-to-date `main`:
+
+```sh
+npm version <patch|minor> -m "chore(release): %s"
+git push --follow-tags
+gh release create "v$(node -p 'require("./package.json").version')" --generate-notes
+npm publish
+```
+
+Bump minor only for breaking API changes; everything else is a patch. `prepack` builds `dist/` from the tagged commit.

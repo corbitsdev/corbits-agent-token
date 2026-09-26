@@ -1,7 +1,5 @@
 # @corbits/agent-token
 
-[![npm](https://img.shields.io/npm/v/@corbits/agent-token.svg)](https://www.npmjs.com/package/@corbits/agent-token) [![License: LGPL-2.1](https://img.shields.io/badge/license-LGPL--2.1-green.svg)](https://github.com/corbitsdev/corbits-agent-token/blob/main/LICENSE)
-
 Bearer tokens that a deployed agent presents when it calls back into its Interchange hub (the multi-tenant control plane): mint, list and revoke routes, SHA-256 digests in Postgres, and a Hono middleware that verifies the bearer against the route's tenant. A Corbits hub module that mounts on `@intx/hub-api` and `@intx/db`.
 
 ## Why @corbits/agent-token?
