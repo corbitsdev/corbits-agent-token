@@ -5,12 +5,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { createDB, dropSchema, runMigrations, schema } from "@intx/db";
+import type { TenantEnv } from "@intx/hub-api";
 import { Hono } from "hono";
 
 import { applyAgentTokenMigrations } from "./schema";
 import { hashAgentToken, mintAgentToken, revokeAgentToken, verifyAgentToken } from "./tokens";
 import { mountAgentTokens } from "./mount";
-import { requireAgentToken } from "./middleware";
+import { createAgentTokenVerifier, requireAgentToken } from "./middleware";
+import type { WorkflowRunScopeEnv } from "./workflow-run-scope";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeIfDb = databaseUrl === undefined ? describe.skip : describe;
@@ -34,7 +36,7 @@ function mountedApp(
   tenantId: string,
   options: { gate?: "allow" | "deny"; owns?: readonly string[] } = {},
 ) {
-  const app = new Hono();
+  const app = new Hono<TenantEnv>();
   const owns = options.owns ?? ["def_artifacts"];
   mountAgentTokens(app, {
     db,
@@ -167,9 +169,10 @@ describeIfDb("agent tokens", () => {
         name: "artifacts",
       });
 
-      const app = new Hono<{ Variables: { agentToken: { tenantId: string } } }>();
-      app.use("/guarded", requireAgentToken({ db }));
-      app.get("/guarded", (c) => c.json({ tenantId: c.get("agentToken").tenantId }));
+      const app = new Hono<TenantEnv>();
+      app.get("/guarded", requireAgentToken({ db }), (c) =>
+        c.json({ tenantId: c.get("agentToken").tenantId }),
+      );
 
       const ok = await app.request("/guarded", {
         headers: { authorization: `Bearer ${minted.token}` },
@@ -181,6 +184,40 @@ describeIfDb("agent tokens", () => {
       expect(
         (await app.request("/guarded", { headers: { authorization: "Bearer nope" } })).status,
       ).toBe(401);
+    } finally {
+      await close();
+    }
+  });
+  test("the verifier resolves a live bearer and nothing else", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_ver_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+      const minted = await mintAgentToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "artifacts",
+      });
+
+      const verify = createAgentTokenVerifier({ db });
+      const app = new Hono<WorkflowRunScopeEnv>();
+      app.get("/verify", async (c) => c.json({ identity: (await verify(c)) ?? null }));
+      const identityFor = async (authorization?: string) => {
+        const res = await app.request("/verify", {
+          headers: authorization === undefined ? {} : { authorization },
+        });
+        return ((await res.json()) as { identity: unknown }).identity;
+      };
+
+      expect(await identityFor(`Bearer ${minted.token}`)).toEqual({
+        id: minted.id,
+        tenantId,
+        definitionId: "def_artifacts",
+      });
+      expect(await identityFor()).toBeNull();
+      expect(await identityFor("Bearer nope")).toBeNull();
+      await revokeAgentToken(db, { tenantId, id: minted.id });
+      expect(await identityFor(`Bearer ${minted.token}`)).toBeNull();
     } finally {
       await close();
     }
