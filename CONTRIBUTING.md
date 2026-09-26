@@ -9,8 +9,8 @@ bun install
 createdb agent_token_dev
 export DATABASE_URL=postgres://localhost:5432/agent_token_dev
 
-bun run check   # eslint, prettier --check, typecheck, tests (what CI runs)
-bun run format  # prettier --write
+bun run check   # oxlint, oxfmt --check, typecheck, tests (what CI runs)
+bun run format  # oxfmt
 bun run build
 ```
 
