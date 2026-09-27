@@ -3,14 +3,15 @@
 // host's authenticated context and never from a path parameter.
 import { type } from "arktype";
 import { desc, eq } from "drizzle-orm";
-import type { Env, Hono, MiddlewareHandler } from "hono";
+import type { TenantEnv } from "@intx/hub-api";
+import type { Context, Hono, MiddlewareHandler } from "hono";
 
 import { agentTokenTable } from "./schema.js";
 import { mintAgentToken, revokeAgentToken, type AgentTokenDb } from "./tokens.js";
 
 /** Reads the acting tenant off the host's context. The host owns how its
  * tenant is resolved; this package never reimplements that. */
-export type ResolveTenantId = (ctx: unknown) => string;
+export type ResolveTenantId<E extends TenantEnv> = (c: Context<E>) => string;
 
 /** Answers whether `definitionId` names an agent definition this tenant
  * owns. A token is scoped to a definition, so minting one against a
@@ -20,7 +21,7 @@ export type ResolveDefinition = (
   definitionId: string,
 ) => Promise<boolean> | boolean;
 
-export type MountAgentTokensOpts<TSchema extends Record<string, unknown>> = {
+export type MountAgentTokensOpts<E extends TenantEnv, TSchema extends Record<string, unknown>> = {
   db: AgentTokenDb<TSchema>;
   /**
    * The host's own authority check, run as middleware on every route. Minting
@@ -28,8 +29,8 @@ export type MountAgentTokensOpts<TSchema extends Record<string, unknown>> = {
    * credential creation — once, its way, not by a boolean this package
    * interprets.
    */
-  requireGrant: MiddlewareHandler;
-  resolveTenantId: ResolveTenantId;
+  requireGrant: MiddlewareHandler<E>;
+  resolveTenantId: ResolveTenantId<E>;
   resolveDefinition: ResolveDefinition;
 };
 
@@ -39,13 +40,13 @@ const MintBody = type({
 });
 
 /** Mount `/agent-tokens` onto the host's app, under its tenant prefix. */
-export function mountAgentTokens<E extends Env, TSchema extends Record<string, unknown>>(
+export function mountAgentTokens<E extends TenantEnv, TSchema extends Record<string, unknown>>(
   app: Hono<E>,
-  opts: MountAgentTokensOpts<TSchema>,
+  opts: MountAgentTokensOpts<E, TSchema>,
 ): Hono<E> {
   const { db, requireGrant, resolveTenantId, resolveDefinition } = opts;
 
-  app.get("/agent-tokens", requireGrant, async (c) => {
+  app.get("/agent-tokens", requireGrant, async (c: Context<E>) => {
     const rows = await db
       .select({
         id: agentTokenTable.id,
@@ -61,7 +62,7 @@ export function mountAgentTokens<E extends Env, TSchema extends Record<string, u
     return c.json({ tokens: rows });
   });
 
-  app.post("/agent-tokens", requireGrant, async (c) => {
+  app.post("/agent-tokens", requireGrant, async (c: Context<E>) => {
     const tenantId = resolveTenantId(c);
     const parsed = MintBody(await c.req.json().catch(() => undefined));
     if (parsed instanceof type.errors) {
@@ -80,7 +81,7 @@ export function mountAgentTokens<E extends Env, TSchema extends Record<string, u
     return c.json({ token: minted }, 201);
   });
 
-  app.delete("/agent-tokens/:id", requireGrant, async (c) => {
+  app.delete("/agent-tokens/:id", requireGrant, async (c: Context<E, "/agent-tokens/:id">) => {
     const revoked = await revokeAgentToken(db, {
       tenantId: resolveTenantId(c),
       id: c.req.param("id"),

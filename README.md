@@ -26,7 +26,7 @@ const tokenApp = new Hono<TenantEnv>();
 mountAgentTokens(tokenApp, {
   db,
   requireGrant: requireGrant("credential:*", "create"),
-  resolveTenantId: (ctx) => (ctx as { get(k: "tenant"): { id: string } }).get("tenant").id,
+  resolveTenantId: (c) => c.get("tenant").id,
   // A token is scoped to a definition, so the host confirms this tenant
   // owns it; an unknown definition answers 404 with no detail.
   resolveDefinition: (tenantId, definitionId) => hub.tenantOwnsDefinition(tenantId, definitionId),
@@ -49,10 +49,7 @@ tokens all get the same bare 401, with no detail that would tell a caller
 which it was.
 
 ```ts
-type HostEnv = { Variables: AgentTokenVariables };
-
-app.use("/api/tenants/:tenantId/artifacts/*", requireAgentToken({ db }));
-app.get("/api/tenants/:tenantId/artifacts/:id", (c) => {
+app.get("/api/tenants/:tenantId/artifacts/:id", requireAgentToken({ db }), (c) => {
   const { tenantId, definitionId } = c.get("agentToken");
   // A token is scoped to the tenant that minted it: the consuming mount
   // checks it against the route's own tenant param.
@@ -61,9 +58,17 @@ app.get("/api/tenants/:tenantId/artifacts/:id", (c) => {
 });
 ```
 
-`createAgentTokenVerifier` is the same check as a plain function, for a
+`createAgentTokenVerifier` is the same check as a plain function, for a hub
 mount that wants to fall back to its own authentication when no bearer is
 presented.
+
+## Run-scoped mounts
+
+A mount that serves a deployed agent's run, rather than a browser session,
+imports its types from here: `ResolvedWorkflowRunScope` (`{ tenantId,
+principalId, runId }`), `WorkflowRunScopeEnv` (the hub's `TenantEnv` plus a
+`workflowRunScope` variable) and `AgentTokenAuth`, the host's `verify` and
+`resolveRun` pair. `createAgentTokenVerifier({ db })` is a ready `verify`.
 
 ## Security
 

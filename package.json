@@ -46,7 +46,11 @@
     "postgres": "^3.4.8",
     "@intx/db": "^0.4.0"
   },
+  "peerDependencies": {
+    "@intx/hub-api": "^0.4.0"
+  },
   "devDependencies": {
+    "@intx/hub-api": "0.4.0",
     "@types/bun": "1.3.9",
     "typescript": "5.9.3"
   }
