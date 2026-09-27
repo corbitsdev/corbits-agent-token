@@ -37,8 +37,8 @@ export type MountAgentTokensOpts<
 };
 
 const MintBody = type({
-  definitionId: "string > 0",
-  name: "string > 0",
+  definitionId: "0 < string <= 256",
+  name: "0 < string <= 256",
 });
 
 /** Mount `/agent-tokens` onto the host's app, under its tenant prefix. */
