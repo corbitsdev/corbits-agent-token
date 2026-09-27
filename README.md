@@ -26,7 +26,6 @@ const tokenApp = new Hono<TenantEnv>();
 mountAgentTokens(tokenApp, {
   db,
   requireGrant: requireGrant("credential:*", "create"),
-  resolveTenantId: (c) => c.get("tenant").id,
   // A token is scoped to a definition, so the host confirms this tenant
   // owns it; an unknown definition answers 404 with no detail.
   resolveDefinition: (tenantId, definitionId) => hub.tenantOwnsDefinition(tenantId, definitionId),
@@ -43,24 +42,24 @@ app.route("/api/tenants/:tenantId", tokenApp);
 ## Middleware (`requireAgentToken`)
 
 Reads `Authorization: Bearer`, hashes the presented value, and looks up an
-unrevoked row. On success it sets `agentToken` — `{ id, tenantId,
-definitionId }` — on the context; missing, malformed, unknown and revoked
-tokens all get the same bare 401, with no detail that would tell a caller
-which it was.
+unrevoked row minted by the route's own tenant (`c.get("tenant")`). On
+success it sets `agentToken` — `{ id, tenantId, definitionId }` — on the
+context; missing, malformed, unknown, revoked and other-tenant tokens all
+get the same bare 401, with no detail that would tell a caller which it was.
+It must run behind the hub's tenant middleware, which sets `tenant`; mounted
+without it, a valid token fails the request with a 500 rather than passing.
 
 ```ts
 app.get("/api/tenants/:tenantId/artifacts/:id", requireAgentToken({ db }), (c) => {
-  const { tenantId, definitionId } = c.get("agentToken");
-  // A token is scoped to the tenant that minted it: the consuming mount
-  // checks it against the route's own tenant param.
-  if (tenantId !== c.req.param("tenantId")) return c.json({ error: "forbidden" }, 403);
+  const { definitionId } = c.get("agentToken");
   ...
 });
 ```
 
-`createAgentTokenVerifier` is the same check as a plain function, for a hub
-mount that wants to fall back to its own authentication when no bearer is
-presented.
+`createAgentTokenVerifier` is the bearer lookup as a plain function, for a
+hub mount that wants to fall back to its own authentication when no bearer
+is presented. Like the middleware, it refuses a token minted by another
+tenant.
 
 ## Run-scoped mounts
 
@@ -68,7 +67,8 @@ A mount that serves a deployed agent's run, rather than a browser session,
 imports its types from here: `ResolvedWorkflowRunScope` (`{ tenantId,
 principalId, runId }`), `WorkflowRunScopeEnv` (the hub's `TenantEnv` plus a
 `workflowRunScope` variable) and `AgentTokenAuth`, the host's `verify` and
-`resolveRun` pair. `createAgentTokenVerifier({ db })` is a ready `verify`.
+`resolveRun` pair. `createAgentTokenVerifier({ db })` is a ready `verify`;
+the mount refuses a token whose `tenantId` is not the resolved run's.
 
 ## Security
 

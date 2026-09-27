@@ -19,7 +19,6 @@ export {
   mountAgentTokens,
   type MountAgentTokensOpts,
   type ResolveDefinition,
-  type ResolveTenantId,
 } from "./mount.js";
 export {
   createAgentTokenVerifier,
