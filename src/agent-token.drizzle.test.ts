@@ -1,6 +1,6 @@
 // DB-gated: skipped when no DATABASE_URL is reachable. Migrations run into
 // a scratch schema so this test never touches a real tenant table;
-// `applyAgentTokenMigrations` is told that scratch schema so its
+// `runAgentTokenMigrations` is told that scratch schema so its
 // `tenant_id` FK targets it.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
@@ -9,7 +9,7 @@ import type { TenantEnv } from "@intx/hub-api";
 import { eq } from "drizzle-orm";
 import { Hono, type MiddlewareHandler } from "hono";
 
-import { applyAgentTokenMigrations } from "./schema";
+import { runAgentTokenMigrations } from "./migrations";
 import { hashAgentToken, mintAgentToken, revokeAgentToken, verifyAgentToken } from "./tokens";
 import { mountAgentTokens } from "./mount";
 import { createAgentTokenVerifier, requireAgentToken } from "./middleware";
@@ -79,7 +79,7 @@ describeIfDb("agent tokens", () => {
 
   beforeAll(async () => {
     await runMigrations(target, { schema: SCHEMA });
-    await applyAgentTokenMigrations(databaseUrl ?? "", { tenantSchema: SCHEMA });
+    await runAgentTokenMigrations(target, { schema: SCHEMA });
   });
 
   afterAll(async () => {
