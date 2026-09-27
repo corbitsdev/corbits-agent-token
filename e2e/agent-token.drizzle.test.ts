@@ -205,6 +205,36 @@ describeIfDb("agent tokens", () => {
     }
   });
 
+  test("the mount refuses a name or definitionId over 256 characters", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_len_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+      const app = mountedApp(db, tenantId, { owns: ["x".repeat(257)] });
+      const mint = (body: unknown) =>
+        app.request("/agent-tokens", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      expect(
+        (await mint({ definitionId: "def_artifacts", name: "n".repeat(257) }))
+          .status,
+      ).toBe(400);
+      expect(
+        (await mint({ definitionId: "x".repeat(257), name: "artifacts" }))
+          .status,
+      ).toBe(400);
+      expect(
+        (await mint({ definitionId: "def_artifacts", name: "n".repeat(256) }))
+          .status,
+      ).toBe(404);
+    } finally {
+      await close();
+    }
+  });
+
   test("the middleware admits a live bearer on its own tenant and 401s everything else", async () => {
     const { db, close } = createDB({ ...target, schema: SCHEMA });
     try {

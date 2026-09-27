@@ -59,11 +59,13 @@ Mounts relative routes on a `Hono<TenantEnv>`. Put it under the hub's tenant pre
 | `requireGrant`      | `MiddlewareHandler` | The grant check for minting a credential, run on every route.                          |
 | `resolveDefinition` | `ResolveDefinition` | `(tenantId, definitionId) => boolean \| Promise<boolean>`: whether the tenant owns it. |
 
-| Route                      | Result                                                                                                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /agent-tokens`        | `200 { tokens }`, without plaintext or digest.                                                                                                                      |
-| `POST /agent-tokens`       | Mints for `{ definitionId, name }`: `201 { token }` with the plaintext. `400 invalid_body` on a bad body, `404 not_found` for a definition the tenant does not own. |
-| `DELETE /agent-tokens/:id` | Revokes: `200 { ok: true }`, or `404 not_found`. Revocation is final.                                                                                               |
+| Route                      | Result                                                                                                                                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /agent-tokens`        | `200 { tokens }`, without plaintext or digest.                                                                                                                                                     |
+| `POST /agent-tokens`       | Mints for `{ definitionId, name }`: `201 { token }` with the plaintext. `400 invalid_body` on a bad body or a field over 256 characters, `404 not_found` for a definition the tenant does not own. |
+| `DELETE /agent-tokens/:id` | Revokes: `200 { ok: true }`, or `404 not_found`. Revocation is final.                                                                                                                              |
+
+Tokens do not expire: each stays valid until it is revoked.
 
 ### `requireAgentToken({ db })`
 
