@@ -7,10 +7,16 @@ import { randomUUID } from "node:crypto";
 import { createDB, dropSchema, runMigrations, schema } from "@intx/db";
 import type { TenantEnv } from "@intx/hub-api";
 import { eq } from "drizzle-orm";
+import { type } from "arktype";
 import { Hono, type MiddlewareHandler } from "hono";
 
 import { runAgentTokenMigrations } from "../src/migrations";
-import { hashAgentToken, mintAgentToken, revokeAgentToken, verifyAgentToken } from "../src/tokens";
+import {
+  hashAgentToken,
+  mintAgentToken,
+  revokeAgentToken,
+  verifyAgentToken,
+} from "../src/tokens";
 import { mountAgentTokens } from "../src/mount";
 import { createAgentTokenVerifier, requireAgentToken } from "../src/middleware";
 import type { WorkflowRunScopeEnv } from "../src/workflow-run-scope";
@@ -19,6 +25,10 @@ const databaseUrl = process.env.DATABASE_URL;
 const describeIfDb = databaseUrl === undefined ? describe.skip : describe;
 
 const SCHEMA = "agent_token_test";
+
+const MintResponse = type({ token: { id: "string", token: "string" } });
+const ListResponse = type({ tokens: "unknown[]" });
+const VerifyResponse = type({ identity: "unknown" });
 
 function dbTargetFromUrl(url: string) {
   const parsed = new URL(url);
@@ -37,7 +47,10 @@ function tenantFrom<E extends TenantEnv>(
   tenantId: string,
 ): MiddlewareHandler<E> {
   return async (c, next) => {
-    const [tenant] = await db.select().from(schema.tenant).where(eq(schema.tenant.id, tenantId));
+    const [tenant] = await db
+      .select()
+      .from(schema.tenant)
+      .where(eq(schema.tenant.id, tenantId));
     if (tenant === undefined) return c.json({ error: "not_found" }, 404);
     c.set("tenant", tenant);
     await next();
@@ -75,7 +88,9 @@ function mintRequest(definitionId: string): RequestInit {
 }
 
 describeIfDb("agent tokens", () => {
-  const target = dbTargetFromUrl(databaseUrl ?? "postgres://localhost:5432/unused");
+  const target = dbTargetFromUrl(
+    databaseUrl ?? "postgres://localhost:5432/unused",
+  );
 
   beforeAll(async () => {
     await runMigrations(target, { schema: SCHEMA });
@@ -117,9 +132,13 @@ describeIfDb("agent tokens", () => {
 
       expect(await verifyAgentToken(db, "not-a-token")).toBeUndefined();
 
-      expect(await revokeAgentToken(db, { tenantId, id: minted.id })).toBe(true);
+      expect(await revokeAgentToken(db, { tenantId, id: minted.id })).toBe(
+        true,
+      );
       expect(await verifyAgentToken(db, minted.token)).toBeUndefined();
-      expect(await revokeAgentToken(db, { tenantId, id: minted.id })).toBe(false);
+      expect(await revokeAgentToken(db, { tenantId, id: minted.id })).toBe(
+        false,
+      );
     } finally {
       await close();
     }
@@ -133,18 +152,25 @@ describeIfDb("agent tokens", () => {
 
       const app = mountedApp(db, tenantId);
 
-      const created = await app.request("/agent-tokens", mintRequest("def_artifacts"));
+      const created = await app.request(
+        "/agent-tokens",
+        mintRequest("def_artifacts"),
+      );
       expect(created.status).toBe(201);
-      const body = (await created.json()) as { token: { id: string; token: string } };
+      const body = MintResponse.assert(await created.json());
       const plaintext = body.token.token;
 
       const listed = await app.request("/agent-tokens");
-      const listedBody = (await listed.json()) as { tokens: Array<Record<string, unknown>> };
+      const listedBody = ListResponse.assert(await listed.json());
       expect(listedBody.tokens).toHaveLength(1);
       expect(JSON.stringify(listedBody)).not.toContain(plaintext);
-      expect(JSON.stringify(listedBody)).not.toContain(hashAgentToken(plaintext));
+      expect(JSON.stringify(listedBody)).not.toContain(
+        hashAgentToken(plaintext),
+      );
 
-      const revoked = await app.request(`/agent-tokens/${body.token.id}`, { method: "DELETE" });
+      const revoked = await app.request(`/agent-tokens/${body.token.id}`, {
+        method: "DELETE",
+      });
       expect(revoked.status).toBe(200);
       expect(await verifyAgentToken(db, plaintext)).toBeUndefined();
     } finally {
@@ -159,11 +185,17 @@ describeIfDb("agent tokens", () => {
       await seedTenant(db, tenantId);
 
       const gated = mountedApp(db, tenantId, { gate: "deny" });
-      expect((await gated.request("/agent-tokens", mintRequest("def_artifacts"))).status).toBe(403);
+      expect(
+        (await gated.request("/agent-tokens", mintRequest("def_artifacts")))
+          .status,
+      ).toBe(403);
       expect((await gated.request("/agent-tokens")).status).toBe(403);
 
       const app = mountedApp(db, tenantId);
-      const foreign = await app.request("/agent-tokens", mintRequest("def_somebody_else"));
+      const foreign = await app.request(
+        "/agent-tokens",
+        mintRequest("def_somebody_else"),
+      );
       expect(foreign.status).toBe(404);
       // No detail: a definition another tenant owns reads exactly like one
       // that never existed.
@@ -200,20 +232,27 @@ describeIfDb("agent tokens", () => {
       app.get("/tenants/:tenantId/guarded", requireAgentToken({ db }), (c) =>
         c.json({ tenantId: c.get("agentToken").tenantId }),
       );
-      app.get("/untenanted", requireAgentToken({ db }), (c) => c.json({ ok: true }));
+      app.get("/untenanted", requireAgentToken({ db }), (c) =>
+        c.json({ ok: true }),
+      );
       const bearer = { headers: { authorization: `Bearer ${minted.token}` } };
 
       const ok = await app.request(`/tenants/${tenantId}/guarded`, bearer);
       expect(ok.status).toBe(200);
       expect(await ok.json()).toEqual({ tenantId });
 
-      const crossTenant = await app.request(`/tenants/${otherTenantId}/guarded`, bearer);
+      const crossTenant = await app.request(
+        `/tenants/${otherTenantId}/guarded`,
+        bearer,
+      );
       expect(crossTenant.status).toBe(401);
 
       // Mounted without the tenant middleware, a valid token never passes.
       expect((await app.request("/untenanted", bearer)).status).toBe(500);
 
-      expect((await app.request(`/tenants/${tenantId}/guarded`)).status).toBe(401);
+      expect((await app.request(`/tenants/${tenantId}/guarded`)).status).toBe(
+        401,
+      );
       expect(
         (
           await app.request(`/tenants/${tenantId}/guarded`, {
@@ -244,12 +283,17 @@ describeIfDb("agent tokens", () => {
       app.use("/:tenantId/*", async (c, next) =>
         tenantFrom<WorkflowRunScopeEnv>(db, c.req.param("tenantId"))(c, next),
       );
-      app.get("/:tenantId/verify", async (c) => c.json({ identity: (await verify(c)) ?? null }));
-      const identityFor = async (authorization?: string, onTenant = tenantId) => {
+      app.get("/:tenantId/verify", async (c) =>
+        c.json({ identity: (await verify(c)) ?? null }),
+      );
+      const identityFor = async (
+        authorization?: string,
+        onTenant = tenantId,
+      ) => {
         const res = await app.request(`/${onTenant}/verify`, {
           headers: authorization === undefined ? {} : { authorization },
         });
-        return ((await res.json()) as { identity: unknown }).identity;
+        return VerifyResponse.assert(await res.json()).identity;
       };
 
       expect(await identityFor(`Bearer ${minted.token}`)).toEqual({
@@ -257,7 +301,9 @@ describeIfDb("agent tokens", () => {
         tenantId,
         definitionId: "def_artifacts",
       });
-      expect(await identityFor(`Bearer ${minted.token}`, otherTenantId)).toBeNull();
+      expect(
+        await identityFor(`Bearer ${minted.token}`, otherTenantId),
+      ).toBeNull();
       expect(await identityFor()).toBeNull();
       expect(await identityFor("Bearer nope")).toBeNull();
       expect(await identityFor(`  bearer   ${minted.token}  `)).toEqual({

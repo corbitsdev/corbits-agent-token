@@ -7,7 +7,11 @@ import type { TenantEnv } from "@intx/hub-api";
 import type { Context, Hono, MiddlewareHandler } from "hono";
 
 import { agentTokenTable } from "./schema.js";
-import { mintAgentToken, revokeAgentToken, type AgentTokenDb } from "./tokens.js";
+import {
+  mintAgentToken,
+  revokeAgentToken,
+  type AgentTokenDb,
+} from "./tokens.js";
 
 /** Answers whether `definitionId` names an agent definition this tenant
  * owns. A token is scoped to a definition, so minting one against a
@@ -17,7 +21,10 @@ export type ResolveDefinition = (
   definitionId: string,
 ) => Promise<boolean> | boolean;
 
-export type MountAgentTokensOpts<E extends TenantEnv, TSchema extends Record<string, unknown>> = {
+export type MountAgentTokensOpts<
+  E extends TenantEnv,
+  TSchema extends Record<string, unknown>,
+> = {
   db: AgentTokenDb<TSchema>;
   /**
    * The host's own authority check, run as middleware on every route. Minting
@@ -35,10 +42,10 @@ const MintBody = type({
 });
 
 /** Mount `/agent-tokens` onto the host's app, under its tenant prefix. */
-export function mountAgentTokens<E extends TenantEnv, TSchema extends Record<string, unknown>>(
-  app: Hono<E>,
-  opts: MountAgentTokensOpts<E, TSchema>,
-): Hono<E> {
+export function mountAgentTokens<
+  E extends TenantEnv,
+  TSchema extends Record<string, unknown>,
+>(app: Hono<E>, opts: MountAgentTokensOpts<E, TSchema>): Hono<E> {
   const { db, requireGrant, resolveDefinition } = opts;
 
   app.get("/agent-tokens", requireGrant, async (c: Context<E>) => {
@@ -76,14 +83,18 @@ export function mountAgentTokens<E extends TenantEnv, TSchema extends Record<str
     return c.json({ token: minted }, 201);
   });
 
-  app.delete("/agent-tokens/:id", requireGrant, async (c: Context<E, "/agent-tokens/:id">) => {
-    const revoked = await revokeAgentToken(db, {
-      tenantId: c.get("tenant").id,
-      id: c.req.param("id"),
-    });
-    if (!revoked) return c.json({ error: "not_found" }, 404);
-    return c.json({ ok: true });
-  });
+  app.delete(
+    "/agent-tokens/:id",
+    requireGrant,
+    async (c: Context<E, "/agent-tokens/:id">) => {
+      const revoked = await revokeAgentToken(db, {
+        tenantId: c.get("tenant").id,
+        id: c.req.param("id"),
+      });
+      if (!revoked) return c.json({ error: "not_found" }, 404);
+      return c.json({ ok: true });
+    },
+  );
 
   return app;
 }
