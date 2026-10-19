@@ -1,6 +1,6 @@
 {
   "name": "@corbits/agent-token",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bearer tokens that a deployed agent presents when it calls back into its Interchange hub: mint/revoke routes and a verifying Hono middleware",
   "keywords": [
     "agent-token",
@@ -56,8 +56,8 @@
     "arktype": "^2.2.0"
   },
   "devDependencies": {
-    "@intx/db": "0.4.0",
-    "@intx/hub-api": "0.4.0",
+    "@intx/db": "0.5.0",
+    "@intx/hub-api": "0.5.0",
     "@types/bun": "1.3.9",
     "agent-token-0.1.0": "npm:@corbits/agent-token@0.1.0",
     "drizzle-orm": "0.45.2",
@@ -68,8 +68,8 @@
     "typescript": "5.9.3"
   },
   "peerDependencies": {
-    "@intx/db": "^0.4.0",
-    "@intx/hub-api": "^0.4.0",
+    "@intx/db": "^0.5.0",
+    "@intx/hub-api": "^0.5.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.11.9",
     "postgres": "^3.4.8"
