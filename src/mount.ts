@@ -57,6 +57,7 @@ export function mountAgentTokens<
         name: agentTokenTable.name,
         createdAt: agentTokenTable.createdAt,
         revokedAt: agentTokenTable.revokedAt,
+        lastUsedAt: agentTokenTable.lastUsedAt,
       })
       .from(agentTokenTable)
       .where(eq(agentTokenTable.tenantId, c.get("tenant").id))

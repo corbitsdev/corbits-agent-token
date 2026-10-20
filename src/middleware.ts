@@ -6,6 +6,7 @@ import type { Context, MiddlewareHandler } from "hono";
 
 import {
   bearerFromAuthorization,
+  recordTokenUse,
   verifyAgentToken,
   type AgentTokenDb,
 } from "./tokens.js";
@@ -23,6 +24,7 @@ export type AgentTokenVariables = { agentToken: AgentTokenContext };
 
 export type RequireAgentTokenOpts<TSchema extends Record<string, unknown>> = {
   db: AgentTokenDb<TSchema>;
+  recordUse?: boolean;
 };
 
 /** A host-side verifier, for mounts that want to authenticate a bearer
@@ -55,12 +57,29 @@ export function createAgentTokenVerifier<
 >(opts: RequireAgentTokenOpts<TSchema>): AgentTokenVerifier {
   // The tenant is read before the header, so a host missing the tenant
   // middleware rejects every request, not only valid tokens.
-  return async (c) =>
-    verifyAuthorization(
+  return async (c) => {
+    const identity = await verifyAuthorization(
       opts.db,
       c.get("tenant").id,
       c.req.header("authorization"),
     );
+    if (identity !== undefined && opts.recordUse) {
+      recordTokenUse(opts.db, identity.id).catch((err: unknown) => {
+        console.error("recordTokenUse failed (verifier)", err);
+      });
+      console.info(
+        JSON.stringify({
+          event: "agent_token_used",
+          tokenId: identity.id,
+          tenantId: identity.tenantId,
+          definitionId: identity.definitionId,
+          route: c.req.path,
+          method: c.req.method,
+        }),
+      );
+    }
+    return identity;
+  };
 }
 
 /** Middleware that verifies a bearer and sets `agentToken` on the context.
@@ -91,6 +110,21 @@ export function requireAgentToken<TSchema extends Record<string, unknown>>(
     }
     if (identity === undefined) return c.json(unauthorized, 401);
     c.set("agentToken", identity);
+    if (opts.recordUse) {
+      recordTokenUse(opts.db, identity.id).catch((err: unknown) => {
+        console.error("recordTokenUse failed (middleware)", err);
+      });
+      console.info(
+        JSON.stringify({
+          event: "agent_token_used",
+          tokenId: identity.id,
+          tenantId: identity.tenantId,
+          definitionId: identity.definitionId,
+          route: c.req.path,
+          method: c.req.method,
+        }),
+      );
+    }
     await next();
     return undefined;
   };

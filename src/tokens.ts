@@ -173,6 +173,18 @@ export async function mintRunScopedToken<
   };
 }
 
+/** Updates the last-used timestamp on a token row. Fire after a
+ * successful verification to leave an audit trail. */
+export async function recordTokenUse<TSchema extends Record<string, unknown>>(
+  db: AgentTokenDb<TSchema>,
+  tokenId: string,
+): Promise<void> {
+  await db
+    .update(agentTokenTable)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(agentTokenTable.id, tokenId));
+}
+
 /** Reads a `Bearer` credential out of an `Authorization` header value. */
 export function bearerFromAuthorization(
   header: string | undefined,
