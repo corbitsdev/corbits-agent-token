@@ -63,16 +63,33 @@ export function createAgentTokenVerifier<
     );
 }
 
+/** Middleware that verifies a bearer and sets `agentToken` on the context.
+ * Every rejection — missing bearer, invalid token, revoked token, wrong
+ * tenant, or missing tenant middleware — returns the same
+ * `401 { "error": "unauthorized" }` so a response never reveals whether a
+ * token is live or even whether the route exists.
+ *
+ * Must run behind the hub's tenant middleware; without it every request is
+ * a 401 (not a 500). */
 export function requireAgentToken<TSchema extends Record<string, unknown>>(
   opts: RequireAgentTokenOpts<TSchema>,
 ): MiddlewareHandler<TenantEnv & { Variables: AgentTokenVariables }> {
+  const unauthorized = { error: "unauthorized" } as const;
+
   return async (c, next) => {
-    const identity = await verifyAuthorization(
-      opts.db,
-      c.get("tenant").id,
-      c.req.header("authorization"),
-    );
-    if (identity === undefined) return c.json({ error: "unauthorized" }, 401);
+    let identity: AgentTokenContext | undefined;
+    try {
+      identity = await verifyAuthorization(
+        opts.db,
+        c.get("tenant").id,
+        c.req.header("authorization"),
+      );
+    } catch {
+      // Missing tenant middleware or other host-side error — same 401 so
+      // the response never reveals whether the route exists.
+      return c.json(unauthorized, 401);
+    }
+    if (identity === undefined) return c.json(unauthorized, 401);
     c.set("agentToken", identity);
     await next();
     return undefined;
