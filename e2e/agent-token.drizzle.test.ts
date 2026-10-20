@@ -21,6 +21,10 @@ import {
 import { mountAgentTokens } from "../src/mount";
 import { mountRunScopedTokens } from "../src/mount-run-scoped";
 import { createAgentTokenVerifier, requireAgentToken } from "../src/middleware";
+import {
+  createRunBoundTokenVerifier,
+  requireRunBoundToken,
+} from "../src/run-bound";
 import type { WorkflowRunScopeEnv } from "../src/workflow-run-scope";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -535,6 +539,196 @@ describeIfDb("agent tokens", () => {
         body: JSON.stringify({ runAddress: "runs/cross" }),
       });
       expect(res.status).toBe(404);
+    } finally {
+      await close();
+    }
+  });
+
+  test("requireRunBoundToken admits a run-bound bearer and sets workflowRunScope from the token", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_rb_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+
+      const minted = await mintRunScopedToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "workflow",
+        runId: "run_bound_1",
+      });
+
+      const scope = {
+        tenantId,
+        principalId: "principal_1",
+        runId: "run_bound_1",
+      };
+
+      const app = new Hono<TenantEnv>();
+      app.use(tenantFrom(db, tenantId));
+      app.get(
+        "/guarded",
+        requireRunBoundToken({
+          db,
+          resolveRunById: (runId) => (runId === "run_bound_1" ? scope : null),
+        }),
+        (c) =>
+          c.json({
+            tokenRunId: c.get("agentToken").runId,
+            scopeRunId: c.get("workflowRunScope").runId,
+            principalId: c.get("workflowRunScope").principalId,
+          }),
+      );
+
+      const ok = await app.request("/guarded", {
+        headers: { authorization: `Bearer ${minted.token}` },
+      });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({
+        tokenRunId: "run_bound_1",
+        scopeRunId: "run_bound_1",
+        principalId: "principal_1",
+      });
+    } finally {
+      await close();
+    }
+  });
+
+  test("requireRunBoundToken returns identical 401 for every rejection case", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_rb401_${randomUUID().slice(0, 8)}`;
+      const otherTenantId = `tnt_rb401_o_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+      await seedTenant(db, otherTenantId);
+
+      // A run-bound token.
+      const bound = await mintRunScopedToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "workflow",
+        runId: "run_401",
+      });
+
+      // A definition-scoped token (no runId).
+      const unbound = await mintAgentToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "artifacts",
+      });
+
+      // A token from a different tenant.
+      const foreign = await mintRunScopedToken(db, {
+        tenantId: otherTenantId,
+        definitionId: "def_artifacts",
+        name: "workflow",
+        runId: "run_foreign",
+      });
+
+      const app = new Hono<TenantEnv>();
+      app.use(tenantFrom(db, tenantId));
+      app.get(
+        "/guarded",
+        requireRunBoundToken({
+          db,
+          resolveRunById: (runId) =>
+            runId === "run_401" ? { tenantId, principalId: "p1", runId } : null,
+        }),
+        (c) => c.json({ ok: true }),
+      );
+
+      const expected = { error: "unauthorized" };
+
+      // No bearer.
+      const noBear = await app.request("/guarded");
+      expect(noBear.status).toBe(401);
+      expect(await noBear.json()).toEqual(expected);
+
+      // Fabricated bearer.
+      const fake = await app.request("/guarded", {
+        headers: { authorization: "Bearer invented" },
+      });
+      expect(fake.status).toBe(401);
+      expect(await fake.json()).toEqual(expected);
+
+      // Valid token but no runId (definition-scoped).
+      const noRun = await app.request("/guarded", {
+        headers: { authorization: `Bearer ${unbound.token}` },
+      });
+      expect(noRun.status).toBe(401);
+      expect(await noRun.json()).toEqual(expected);
+
+      // Valid token from another tenant.
+      const cross = await app.request("/guarded", {
+        headers: { authorization: `Bearer ${foreign.token}` },
+      });
+      expect(cross.status).toBe(401);
+      expect(await cross.json()).toEqual(expected);
+
+      // Valid run-bound token (positive control).
+      const ok = await app.request("/guarded", {
+        headers: { authorization: `Bearer ${bound.token}` },
+      });
+      expect(ok.status).toBe(200);
+    } finally {
+      await close();
+    }
+  });
+
+  test("createRunBoundTokenVerifier resolves run-bound tokens and rejects everything else", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_rbv_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+
+      const bound = await mintRunScopedToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "workflow",
+        runId: "run_verifier",
+      });
+
+      const unbound = await mintAgentToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "artifacts",
+      });
+
+      const verify = createRunBoundTokenVerifier({
+        db,
+        resolveRunById: (runId) =>
+          runId === "run_verifier"
+            ? { tenantId, principalId: "p1", runId }
+            : null,
+      });
+
+      const app = new Hono<WorkflowRunScopeEnv>();
+      app.use("/:tenantId/*", async (c, next) =>
+        tenantFrom<WorkflowRunScopeEnv>(db, c.req.param("tenantId"))(c, next),
+      );
+      app.get("/:tenantId/check", async (c) => {
+        const result = await verify(c);
+        return c.json({ result: result ?? null });
+      });
+
+      const ok = await app.request(`/${tenantId}/check`, {
+        headers: { authorization: `Bearer ${bound.token}` },
+      });
+      expect(ok.status).toBe(200);
+      const body = (await ok.json()) as {
+        result: { workflowRunScope: { runId: string } } | null;
+      };
+      expect(body.result).not.toBeNull();
+      expect(body.result!.workflowRunScope.runId).toBe("run_verifier");
+
+      // Unbound token returns null.
+      const noRun = await app.request(`/${tenantId}/check`, {
+        headers: { authorization: `Bearer ${unbound.token}` },
+      });
+      expect(((await noRun.json()) as { result: unknown }).result).toBeNull();
+
+      // No bearer returns null.
+      const noBear = await app.request(`/${tenantId}/check`);
+      expect(((await noBear.json()) as { result: unknown }).result).toBeNull();
     } finally {
       await close();
     }

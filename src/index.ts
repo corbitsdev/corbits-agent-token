@@ -19,6 +19,14 @@ export {
   type RunScopeForToken,
 } from "./mount-run-scoped.js";
 export {
+  createRunBoundTokenVerifier,
+  requireRunBoundToken,
+  type ResolveRunById,
+  type RequireRunBoundTokenOpts,
+  type RunBoundTokenVariables,
+  type RunBoundTokenVerifier,
+} from "./run-bound.js";
+export {
   createAgentTokenVerifier,
   requireAgentToken,
   type AgentTokenContext,
