@@ -15,6 +15,7 @@ import {
   hashAgentToken,
   mintAgentToken,
   mintRunScopedToken,
+  recordTokenUse,
   revokeAgentToken,
   verifyAgentToken,
 } from "../src/tokens";
@@ -755,6 +756,52 @@ describeIfDb("agent tokens", () => {
       });
       expect(res.status).toBe(401);
       expect(await res.json()).toEqual({ error: "unauthorized" });
+    } finally {
+      await close();
+    }
+  });
+
+  test("recordTokenUse touches lastUsedAt", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_rec_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+
+      const minted = await mintAgentToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "artifacts",
+      });
+
+      // Verify lastUsedAt is null initially
+      const { agentTokenTable } = await import("../src/schema");
+      const [before] = await db
+        .select()
+        .from(agentTokenTable)
+        .where(eq(agentTokenTable.id, minted.id));
+      expect(before!.lastUsedAt).toBeNull();
+
+      // Call recordTokenUse
+      const beforeUse = Date.now();
+      await recordTokenUse(db, minted.id);
+
+      // Verify lastUsedAt is now set and recent
+      const [after] = await db
+        .select()
+        .from(agentTokenTable)
+        .where(eq(agentTokenTable.id, minted.id));
+      expect(after!.lastUsedAt).toBeInstanceOf(Date);
+      expect(after!.lastUsedAt!.getTime()).toBeGreaterThanOrEqual(beforeUse);
+      expect(after!.lastUsedAt!.getTime()).toBeLessThanOrEqual(Date.now());
+
+      // A second call advances the timestamp
+      const firstUsedAt = after!.lastUsedAt!.getTime();
+      await recordTokenUse(db, minted.id);
+      const [again] = await db
+        .select()
+        .from(agentTokenTable)
+        .where(eq(agentTokenTable.id, minted.id));
+      expect(again!.lastUsedAt!.getTime()).toBeGreaterThanOrEqual(firstUsedAt);
     } finally {
       await close();
     }

@@ -1,6 +1,7 @@
 export {
   mintAgentToken,
   mintRunScopedToken,
+  recordTokenUse,
   revokeAgentToken,
   verifyAgentToken,
   type AgentTokenDb,

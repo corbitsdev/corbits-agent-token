@@ -21,4 +21,5 @@ export const agentTokenTable = agentTokenSchema.table("token", {
     .notNull()
     .defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });
