@@ -284,8 +284,10 @@ describeIfDb("agent tokens", () => {
       );
       expect(crossTenant.status).toBe(401);
 
-      // Mounted without the tenant middleware, a valid token never passes.
-      expect((await app.request("/untenanted", bearer)).status).toBe(500);
+      // Mounted without the tenant middleware, a valid token gets 401.
+      const untenanted = await app.request("/untenanted", bearer);
+      expect(untenanted.status).toBe(401);
+      expect(await untenanted.json()).toEqual({ error: "unauthorized" });
 
       expect((await app.request(`/tenants/${tenantId}/guarded`)).status).toBe(
         401,
@@ -729,6 +731,30 @@ describeIfDb("agent tokens", () => {
       // No bearer returns null.
       const noBear = await app.request(`/${tenantId}/check`);
       expect(((await noBear.json()) as { result: unknown }).result).toBeNull();
+    } finally {
+      await close();
+    }
+  });
+
+  test("requireRunBoundToken returns 401 (not 500) when the host has no tenant middleware", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const app = new Hono<TenantEnv>();
+      // No tenant middleware registered.
+      app.get(
+        "/guarded",
+        requireRunBoundToken({
+          db,
+          resolveRunById: () => null,
+        }),
+        (c) => c.json({ ok: true }),
+      );
+
+      const res = await app.request("/guarded", {
+        headers: { authorization: "Bearer any-value" },
+      });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
     } finally {
       await close();
     }
