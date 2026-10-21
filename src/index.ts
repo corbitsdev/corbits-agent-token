@@ -1,5 +1,6 @@
 export {
   mintAgentToken,
+  mintRunScopedToken,
   revokeAgentToken,
   verifyAgentToken,
   type AgentTokenDb,
@@ -11,6 +12,12 @@ export {
   type MountAgentTokensOpts,
   type ResolveDefinition,
 } from "./mount.js";
+export {
+  mountRunScopedTokens,
+  type MountRunScopedTokensOpts,
+  type ResolveRunForToken,
+  type RunScopeForToken,
+} from "./mount-run-scoped.js";
 export {
   createAgentTokenVerifier,
   requireAgentToken,

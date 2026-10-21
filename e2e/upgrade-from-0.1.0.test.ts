@@ -85,6 +85,7 @@ describeIfDb("upgrading a 0.1.0 database", () => {
         id: live.id,
         tenantId: TENANT_ID,
         definitionId: "def_artifacts",
+        runId: null,
       });
       expect(await verifyAgentToken(db, revoked.token)).toBeUndefined();
       const foreignKeys = await db.execute(sql`

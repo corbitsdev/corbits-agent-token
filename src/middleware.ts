@@ -14,6 +14,7 @@ export type AgentTokenContext = {
   tenantId: string;
   definitionId: string;
   id: string;
+  runId: string | null;
 };
 
 /** The context variable this middleware sets, for a host to widen its Env
@@ -45,6 +46,7 @@ async function verifyAuthorization<TSchema extends Record<string, unknown>>(
     id: identity.id,
     tenantId: identity.tenantId,
     definitionId: identity.definitionId,
+    runId: identity.runId,
   };
 }
 

@@ -14,6 +14,7 @@ export const agentTokenTable = agentTokenSchema.table("token", {
     .references(() => hostTenant.id, { onDelete: "cascade" }),
   definitionId: text("definition_id").notNull(),
   name: text("name").notNull(),
+  runId: text("run_id"),
   // Only the digest is stored; the plaintext is returned once at mint time.
   tokenHash: text("token_hash").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true })

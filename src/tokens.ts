@@ -19,6 +19,7 @@ export type AgentTokenIdentity = {
   id: string;
   tenantId: string;
   definitionId: string;
+  runId: string | null;
 };
 
 export type MintedAgentToken = AgentTokenIdentity & {
@@ -67,6 +68,7 @@ export async function mintAgentToken<TSchema extends Record<string, unknown>>(
     id: row.id,
     tenantId: row.tenantId,
     definitionId: row.definitionId,
+    runId: row.runId,
     name: row.name,
     createdAt: row.createdAt,
     token,
@@ -91,7 +93,12 @@ export async function verifyAgentToken<TSchema extends Record<string, unknown>>(
     .limit(1);
   if (row === undefined) return undefined;
   if (!agentTokenHashEquals(row.tokenHash, presented)) return undefined;
-  return { id: row.id, tenantId: row.tenantId, definitionId: row.definitionId };
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    definitionId: row.definitionId,
+    runId: row.runId,
+  };
 }
 
 export async function revokeAgentToken<TSchema extends Record<string, unknown>>(
@@ -110,6 +117,60 @@ export async function revokeAgentToken<TSchema extends Record<string, unknown>>(
     )
     .returning({ id: agentTokenTable.id });
   return row !== undefined;
+}
+
+/** Revokes any active token for `runId` on the same tenant, then mints a
+ * replacement. The caller never chooses the token value. The revoke and
+ * insert run inside a transaction so concurrent calls for the same run
+ * cannot interleave past the partial unique index. */
+export async function mintRunScopedToken<
+  TSchema extends Record<string, unknown>,
+>(
+  db: AgentTokenDb<TSchema>,
+  input: {
+    tenantId: string;
+    definitionId: string;
+    name: string;
+    runId: string;
+  },
+): Promise<MintedAgentToken> {
+  const token = generateAgentToken();
+  const row = await db.transaction(async (tx) => {
+    const now = new Date();
+    await tx
+      .update(agentTokenTable)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(agentTokenTable.tenantId, input.tenantId),
+          eq(agentTokenTable.runId, input.runId),
+          isNull(agentTokenTable.revokedAt),
+        ),
+      );
+    const [inserted] = await tx
+      .insert(agentTokenTable)
+      .values({
+        id: randomUUID(),
+        tenantId: input.tenantId,
+        definitionId: input.definitionId,
+        name: input.name,
+        runId: input.runId,
+        tokenHash: hashAgentToken(token),
+      })
+      .returning();
+    if (inserted === undefined)
+      throw new Error("agent token insert returned no row");
+    return inserted;
+  });
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    definitionId: row.definitionId,
+    runId: row.runId,
+    name: row.name,
+    createdAt: row.createdAt,
+    token,
+  };
 }
 
 /** Reads a `Bearer` credential out of an `Authorization` header value. */

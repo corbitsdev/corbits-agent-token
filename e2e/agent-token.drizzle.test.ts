@@ -14,10 +14,12 @@ import { runAgentTokenMigrations } from "../src/migrations";
 import {
   hashAgentToken,
   mintAgentToken,
+  mintRunScopedToken,
   revokeAgentToken,
   verifyAgentToken,
 } from "../src/tokens";
 import { mountAgentTokens } from "../src/mount";
+import { mountRunScopedTokens } from "../src/mount-run-scoped";
 import { createAgentTokenVerifier, requireAgentToken } from "../src/middleware";
 import type { WorkflowRunScopeEnv } from "../src/workflow-run-scope";
 
@@ -128,6 +130,7 @@ describeIfDb("agent tokens", () => {
         id: minted.id,
         tenantId,
         definitionId: "def_artifacts",
+        runId: null,
       });
 
       expect(await verifyAgentToken(db, "not-a-token")).toBeUndefined();
@@ -330,6 +333,7 @@ describeIfDb("agent tokens", () => {
         id: minted.id,
         tenantId,
         definitionId: "def_artifacts",
+        runId: null,
       });
       expect(
         await identityFor(`Bearer ${minted.token}`, otherTenantId),
@@ -340,6 +344,7 @@ describeIfDb("agent tokens", () => {
         id: minted.id,
         tenantId,
         definitionId: "def_artifacts",
+        runId: null,
       });
       expect(await identityFor(`Basic ${minted.token}`)).toBeNull();
       expect(await identityFor("Bearer")).toBeNull();
@@ -362,6 +367,174 @@ describeIfDb("agent tokens", () => {
         ),
       );
       expect(await (await app.request("/verify")).text()).toBe("rejected");
+    } finally {
+      await close();
+    }
+  });
+
+  test("run-scoped mint generates the token server-side and replaces on re-register", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_run_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+
+      const first = await mintRunScopedToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "workflow",
+        runId: "run_1",
+      });
+      expect(first.token.length).toBeGreaterThan(32);
+      expect(first.runId).toBe("run_1");
+
+      const verified = await verifyAgentToken(db, first.token);
+      expect(verified).toEqual({
+        id: first.id,
+        tenantId,
+        definitionId: "def_artifacts",
+        runId: "run_1",
+      });
+
+      // Re-registering for the same run replaces the old token.
+      const second = await mintRunScopedToken(db, {
+        tenantId,
+        definitionId: "def_artifacts",
+        name: "workflow",
+        runId: "run_1",
+      });
+      expect(second.id).not.toBe(first.id);
+      expect(await verifyAgentToken(db, first.token)).toBeUndefined();
+      expect(await verifyAgentToken(db, second.token)).toEqual({
+        id: second.id,
+        tenantId,
+        definitionId: "def_artifacts",
+        runId: "run_1",
+      });
+    } finally {
+      await close();
+    }
+  });
+
+  test("the run-scoped mount enforces the grant, validates the run, and server-generates the token", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_rsc_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+
+      const runs: Record<
+        string,
+        { definitionId: string; runId: string; tenantId: string }
+      > = {
+        "runs/abc": {
+          definitionId: "def_artifacts",
+          runId: "run_abc",
+          tenantId,
+        },
+      };
+
+      function runScopedApp(gate: "allow" | "deny" = "allow") {
+        const app = new Hono<TenantEnv>();
+        app.use(tenantFrom(db, tenantId));
+        mountRunScopedTokens(app, {
+          db,
+          requireGrant: async (c, next) => {
+            if (gate === "deny") return c.json({ error: "forbidden" }, 403);
+            await next();
+            return undefined;
+          },
+          resolveRun: (addr) => runs[addr] ?? null,
+        });
+        return app;
+      }
+
+      // Without the grant → 403.
+      const denied = await runScopedApp("deny").request(
+        "/workflow-run-tokens",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ runAddress: "runs/abc" }),
+        },
+      );
+      expect(denied.status).toBe(403);
+
+      // Unknown run → 404.
+      const app = runScopedApp();
+      const unknown = await app.request("/workflow-run-tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runAddress: "runs/missing" }),
+      });
+      expect(unknown.status).toBe(404);
+
+      // Happy path → 201, server-generated token.
+      const ok = await app.request("/workflow-run-tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runAddress: "runs/abc" }),
+      });
+      expect(ok.status).toBe(201);
+      const body = MintResponse.assert(await ok.json());
+      expect(body.token.token.length).toBeGreaterThan(32);
+
+      // The token verifies with the correct run.
+      const identity = await verifyAgentToken(db, body.token.token);
+      expect(identity).toEqual({
+        id: body.token.id,
+        tenantId,
+        definitionId: "def_artifacts",
+        runId: "run_abc",
+      });
+
+      // Re-registering replaces the old token.
+      const second = await app.request("/workflow-run-tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runAddress: "runs/abc" }),
+      });
+      expect(second.status).toBe(201);
+      const secondBody = MintResponse.assert(await second.json());
+      expect(await verifyAgentToken(db, body.token.token)).toBeUndefined();
+      expect(await verifyAgentToken(db, secondBody.token.token)).toEqual({
+        id: secondBody.token.id,
+        tenantId,
+        definitionId: "def_artifacts",
+        runId: "run_abc",
+      });
+    } finally {
+      await close();
+    }
+  });
+
+  test("the run-scoped mount rejects a run from another tenant", async () => {
+    const { db, close } = createDB({ ...target, schema: SCHEMA });
+    try {
+      const tenantId = `tnt_cross_${randomUUID().slice(0, 8)}`;
+      const otherTenantId = `tnt_cross_other_${randomUUID().slice(0, 8)}`;
+      await seedTenant(db, tenantId);
+      await seedTenant(db, otherTenantId);
+
+      const app = new Hono<TenantEnv>();
+      app.use(tenantFrom(db, tenantId));
+      mountRunScopedTokens(app, {
+        db,
+        requireGrant: async (_c, next) => {
+          await next();
+          return undefined;
+        },
+        resolveRun: () => ({
+          tenantId: otherTenantId,
+          definitionId: "def_artifacts",
+          runId: "run_other",
+        }),
+      });
+
+      const res = await app.request("/workflow-run-tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runAddress: "runs/cross" }),
+      });
+      expect(res.status).toBe(404);
     } finally {
       await close();
     }
