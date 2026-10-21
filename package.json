@@ -1,6 +1,6 @@
 {
   "name": "@corbits/agent-token",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Bearer tokens that a deployed agent presents when it calls back into its Interchange hub: mint/revoke routes and a verifying Hono middleware",
   "keywords": [
     "agent-token",
